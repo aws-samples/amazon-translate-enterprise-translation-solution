@@ -1,0 +1,405 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Enterprise Translation - Foundational use case for customizing Amazon Translate (uksb-1t80l2nsq)
+
+Parameters:
+  DDBTableName:
+    Type: String
+    Default: EnterpriseTranslateTable
+    AllowedPattern: '[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+'
+
+  apiGatewayName:
+    Type: String
+    Default: EnterpriseTranslateApi
+
+  apiGatewayStageName:
+    Type: String
+    Default: prod
+    AllowedPattern: '[a-z0-9]+'
+
+Resources:
+  EntTranslateApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: Enterprise Translate API
+      ApiKeySourceType: HEADER
+      BinaryMediaTypes:
+        - text/csv
+        - application/json
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Name: !Ref apiGatewayName
+
+  translate:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EntTranslateApi
+      ParentId: !GetAtt EntTranslateApi.RootResourceId
+      PathPart: translate
+
+  customterm:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EntTranslateApi
+      ParentId: !GetAtt EntTranslateApi.RootResourceId
+      PathPart: customterm
+
+  EntTranslateApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref EntTranslateApiGatewayAuthorizer
+      ApiKeyRequired: true
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt EntTranslateDoTranslation.Arn
+      ResourceId: !Ref translate
+      RestApiId: !Ref EntTranslateApi
+
+  EntTranslateApiGatewayCustomTermMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref EntTranslateApiGatewayAuthorizer
+      ApiKeyRequired: true
+      HttpMethod: PUT
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt EntTranslateCustomTermUpload.Arn
+      ResourceId: !Ref customterm
+      RestApiId: !Ref EntTranslateApi
+
+  EntTranslateApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - EntTranslateApiGatewayMethod
+    Properties:
+      RestApiId: !Ref EntTranslateApi
+      StageName: !Ref apiGatewayStageName
+
+  EntTranslateCust1ApiKey1:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - EntTranslateApiGatewayDeployment
+    Properties:
+      Name: EntTranslateCus1StandardTierKey
+      Description: Enterprise Translate - Standard Tier key
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref EntTranslateApi
+          StageName: prod
+
+  EntTranslateCust1ApiKey2:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - EntTranslateApiGatewayDeployment
+    Properties:
+      Name: EntTranslateCus1EnhancedTierKey
+      Description: Enterprise Translate - Customized Tier key
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref EntTranslateApi
+          StageName: prod
+
+  EntTranslateCust1ApiKey3:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - EntTranslateApiGatewayDeployment
+    Properties:
+      Name: EntTranslateCus1AdminTierKey
+      Description: Enterprise Translate - Admin Tier key
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref EntTranslateApi
+          StageName: prod
+
+  EntTranslateUsagePlan1:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - EntTranslateApiGatewayDeployment
+    Properties:
+      ApiStages:
+        - ApiId: !Ref EntTranslateApi
+          Stage: !Ref apiGatewayStageName
+      Description: Enterprise Translate Usage Plan
+      Quota:
+        Limit: 1000
+        Period: MONTH
+      Throttle:
+        BurstLimit: 5
+        RateLimit: 5
+      UsagePlanName: !Ref apiGatewayName
+
+  EntTranslateUsagePlan1Key1:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref EntTranslateCust1ApiKey1
+      KeyType: API_KEY
+      UsagePlanId: !Ref EntTranslateUsagePlan1
+
+  EntTranslateUsagePlan1Key2:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref EntTranslateCust1ApiKey2
+      KeyType: API_KEY
+      UsagePlanId: !Ref EntTranslateUsagePlan1
+
+  EntTranslateUsagePlan1Key3:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref EntTranslateCust1ApiKey3
+      KeyType: API_KEY
+      UsagePlanId: !Ref EntTranslateUsagePlan1
+
+  EntTranslateDoTranslation:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: "import json\nimport boto3\n\ndef lambda_handler(event, context):\n    translate = boto3.client(\"translate\")\n    \n    if 'body' not in event or event['body'] is None:\n        return {\n        'statusCode': 400,\n        'body': json.dumps('Unable to perform translation. Please provide HTTP Body object')\n        }\n    \n    body = json.loads(event[\"body\"], strict=False) \n    source = body['sourceText']\n    sourceLang = 'auto'\n    targetLang = body['targetLanguage']\n\n    #sourceLanguage is an optional parameter. It will default to 'auto' if not passed\n    if 'sourceLanguage' in body and body['sourceLanguage'] is not None:\n        sourceLang = body['sourceLanguage']\n\n    useCustomTerm = 0\n    if 'queryStringParameters' in event and event['queryStringParameters'] is not None:\n        if 'useCustomTerm' in event['queryStringParameters']:\n            useCustomTerm = event['queryStringParameters']['useCustomTerm']\n    try:\n        #translate with custom term file\n        if useCustomTerm == \"1\":\n            customer = event['requestContext']['authorizer']['customer']\n\n            #in this sample implementation, only 1 custom term file is uploaded by customer/tenant but it can be extended to have multiple files per customer (_customerterm_x)\n            customTermFileName = customer + \"_customterm\" + \"_1\"\n            translatedObj = translate.translate_text(Text=source,TerminologyNames=[customTermFileName],SourceLanguageCode=sourceLang,TargetLanguageCode=targetLang)\n        else:\n            translatedObj = translate.translate_text(Text=source,SourceLanguageCode=sourceLang,TargetLanguageCode=targetLang)\n\n        translaterText = translatedObj['TranslatedText']\n        return {\n        'statusCode': 200,\n        'body': json.dumps(translaterText)\n    }\n\n    except:\n        return {\n        'statusCode': 500,\n        'body': json.dumps('Unable to perform translation')\n    }\n"
+      Description: Enterprise Translate - Translation Function
+      FunctionName: EntTranslateDoTranslation
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt EntTranslateTranslateLambdaIAMRole.Arn
+      Runtime: python3.9
+
+  EntTranslateCustomTermUpload:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: "import json\nimport base64\nimport boto3\n\ndef lambda_handler(event, context):\n    try:\n      encodedVal = event[\"body\"]\n      decodedVal = base64.b64decode(encodedVal)\n      customer = event[\"requestContext\"][\"authorizer\"][\"customer\"]\n      customTermName = customer + \"_customterm_1\" \n      \n      translate = boto3.client(\"translate\")\n      response = translate.import_terminology(Name=customTermName, MergeStrategy='OVERWRITE',Description=customTermName,TerminologyData={'File': decodedVal,'Format': 'CSV','Directionality': 'UNI'})\n  \n      return {\n          'statusCode': 200,\n          'body': json.dumps('Custom term uploaded successfully')\n      }\n    except:\n      return {\n          'statusCode': 500,\n          'body': json.dumps('Unable to upload Custom term')\n      }\n"
+      Description: Enterprise Translate - Upload custom term file
+      FunctionName: EntTranslateCustomTermUpload
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt EntTranslateLambdaCustomTermIAMRole.Arn
+      Runtime: python3.9
+
+  EntTranslateLambdaApiGatewayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt EntTranslateDoTranslation.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EntTranslateApi}/*/POST/translate
+
+  EntTranslateLambdaCustomTermApiGatewayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt EntTranslateCustomTermUpload.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EntTranslateApi}/*/PUT/customterm
+
+  EntTranslateDDBTable:
+    Type: AWS::DynamoDB::Table
+    DependsOn:
+      - EntTranslateCust1ApiKey1
+      - EntTranslateCust1ApiKey2
+      - EntTranslateCust1ApiKey3
+    Properties:
+      TableName: !Ref DDBTableName
+      AttributeDefinitions:
+        - AttributeName: TenantId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: TenantId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  EntTranslateDDBInsertLambda:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - EntTranslateDDBTable
+    Properties:
+      Environment:
+        Variables:
+          ddbtablename: !Ref DDBTableName
+          standardTierKey: !Ref EntTranslateCust1ApiKey1
+          enhancedTierKey: !Ref EntTranslateCust1ApiKey2
+          customTermKey: !Ref EntTranslateCust1ApiKey3
+      Code:
+        ZipFile: "import json\nimport cfnresponse\nimport boto3\nimport os\n\ndef handler(event, context):\n  dynamodb = boto3.client('dynamodb')\n  api_gateway_client = boto3.client('apigateway')\n  responseData = {}\n  try:\n    response = api_gateway_client.get_api_key(\n    apiKey=os.environ['standardTierKey'],\n    includeValue=True\n    )\n    responseValue = response['value']\n    dynamodb.put_item(TableName=os.environ['ddbtablename'], Item={'TenantId':{'S': responseValue},'TenantName':{'S': 'customerA'},'Tier':{'N': '1'},'TierDescription':{'S': 'Standard'}}) \n\n    response2 = api_gateway_client.get_api_key(\n    apiKey=os.environ['enhancedTierKey'],\n    includeValue=True\n    )\n    responseValue2 = response2['value']\n    dynamodb.put_item(TableName=os.environ['ddbtablename'], Item={'TenantId':{'S': responseValue2},'TenantName':{'S': 'customerA'},'Tier':{'N': '2'},'TierDescription':{'S': 'Enhanced'}}) \n\n    response3 = api_gateway_client.get_api_key(\n    apiKey=os.environ['customTermKey'],\n    includeValue=True\n    )\n    responseValue3 = response3['value']\n    dynamodb.put_item(TableName=os.environ['ddbtablename'], Item={'TenantId':{'S': responseValue3},'TenantName':{'S': 'customerA'},'Tier':{'N': '3'},'TierDescription':{'S': 'Admin'}}) \n\n    cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)\n  except:\n    cfnresponse.send(event, context, cfnresponse.FAILED, responseData)\n"
+      Description: Enterprise Translate - Lambda function to insert tenant details in DDB table
+      FunctionName: EntTranslateDDBInsertLambda
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt EntTranslateDDBInsertRole.Arn
+      Runtime: python3.9
+
+  EntTranslateDDBInsertRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/EntTranslateDDBInsertLambda:*
+              - Action:
+                  - dynamodb:PutItem
+                Effect: Allow
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBTableName}"
+              - Action: apigateway:GET
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:apigateway:${AWS::Region}::/apikeys/${EntTranslateCust1ApiKey1}
+                  - !Sub arn:aws:apigateway:${AWS::Region}::/apikeys/${EntTranslateCust1ApiKey2}
+                  - !Sub arn:aws:apigateway:${AWS::Region}::/apikeys/${EntTranslateCust1ApiKey3}
+          PolicyName: enttranslateddbinsert
+
+  EntTranslateCustomDDBInsertTrigger:
+    Type: Custom::CustomEntTranslateDDBInsertTrigger
+    Properties:
+      ServiceToken: !GetAtt EntTranslateDDBInsertLambda.Arn
+
+  EntTranslateAuthorizerLambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/EntTranslateLambdaAuthorizer:*
+              - Action:
+                  - dynamodb:GetItem
+                Effect: Allow
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBTableName}"
+          PolicyName: EntTranslateLambdaAuthPolicy
+
+  EntTranslateTranslateLambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/EntTranslateDoTranslation:*
+              - Action:
+                  - comprehend:DetectDominantLanguage
+                  - translate:TranslateText
+                Effect: Allow
+                Resource: '*'
+          PolicyName: EntTranslateDoTranslateLambdaPolicy
+
+  EntTranslateLambdaCustomTermIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/EntTranslateCustomTermUpload:*
+              - Action:
+                  - translate:ImportTerminology
+                Effect: Allow
+                Resource: '*'
+          PolicyName: EntTranslateCustomTermLambdaPolicy
+          # Lambda Token Authorizer
+
+  EntTranslateApiGatewayAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: LambdaRequestAuthorizer
+      Type: REQUEST
+      RestApiId: !Ref EntTranslateApi
+      IdentitySource: method.request.header.x-api-key
+      AuthorizerUri: !Join ["", ['arn:aws:apigateway:', !Ref 'AWS::Region', ':lambda:path/2015-03-31/functions/', !GetAtt EntTranslateRequestAuthorizer.Arn, /invocations]]
+
+  EntTranslateRequestAuthorizer:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          ddbtablename: !Ref DDBTableName
+      Code:
+        ZipFile: "\"\"\"\nCopyright 2015-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.\nLicensed under the Apache License, Version 2.0 (the \"License\"). You may not use this file except in compliance with the License. A copy of the License is located at\n    http://aws.amazon.com/apache2.0/\nor in the \"license\" file accompanying this file. This file is distributed on an \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.\n\"\"\"\nfrom __future__ import print_function\nimport re\nimport boto3\nimport os\n\n#This function retrive api key from header, validate it against custom login (that can be changed on use-case requirements) and either authorize or rejects the requests \n\ndef lambda_handler(event, context):\n    apiKey = event['headers']['x-api-key']\n    useCustomTerm = 0\n    \n    if 'queryStringParameters' in event and 'useCustomTerm' in event['queryStringParameters']:\n        useCustomTerm = event['queryStringParameters']['useCustomTerm']\n      \n    callerMethod = event['resource'].split('/')[1]\n    dynamodb = boto3.resource('dynamodb')\n                \n    try:\n        table_tenant_details = dynamodb.Table(os.environ['ddbtablename'])\n        tenant_details = table_tenant_details.get_item( \n            Key ={\n                'TenantId': apiKey\n            }\n        )\n\n        user_tier = tenant_details['Item']['TierDescription']\n        customerName = tenant_details['Item']['TenantName']\n\n        #Following is an example of custom business logic that can be modified as per the scenario in hand\n        if callerMethod == 'customterm':\n          if user_tier == 'Standard' or user_tier == 'Enhanced':\n            print('Invaid tier')\n            raise Exception('Unauthorized')\n        elif callerMethod == 'translate':\n          if user_tier == 'Admin':\n            print('Admin unable to perform translation')\n            raise Exception('Unauthorized')\n          if user_tier == 'Standard' and useCustomTerm == '1':\n            print('Custom term not supported in tier')\n            raise Exception('Unauthorized')\n        else:\n          print('Invalid api method called')\n          raise Exception('Unauthorized') \n\n        context = {\n            'tenantId': apiKey,\n            'customer': customerName\n        }\n    \n        principalId = \"user|a1b2c3d4\"\n        methodArn = event['methodArn'].split(':')\n        apiGatewayArn = methodArn[5].split('/')\n        awsAccountId = methodArn[4]\n    \n        policy = AuthPolicy(principalId, awsAccountId)\n        policy.restApiId = apiGatewayArn[0]\n        policy.region = methodArn[3]\n        policy.stage = apiGatewayArn[1]\n        policy.allowMethod('PUT', '/customterm') \n        policy.allowMethod('POST', '/translate') \n        authResponse = policy.build()\n    \n        usageIdentifierKey = apiKey\n\n        authResponse['context'] = context\n        authResponse['usageIdentifierKey'] = usageIdentifierKey\n        return authResponse\n    except:\n        raise Exception('Unauthorized')\n        \n\nclass HttpVerb:\n    GET     = \"GET\"\n    POST    = \"POST\"\n    PUT     = \"PUT\"\n    PATCH   = \"PATCH\"\n    HEAD    = \"HEAD\"\n    DELETE  = \"DELETE\"\n    OPTIONS = \"OPTIONS\"\n    ALL     = \"*\"\n\nclass AuthPolicy(object):\n    awsAccountId = \"\"\n    \"\"\"The AWS account id the policy will be generated for. This is used to create the method ARNs.\"\"\"\n    principalId = \"\"\n    \"\"\"The principal used for the policy, this should be a unique identifier for the end user.\"\"\"\n    version = \"2012-10-17\"\n    \"\"\"The policy version used for the evaluation. This should always be '2012-10-17'\"\"\"\n    pathRegex = \"^[/.a-zA-Z0-9-\\*]+$\"\n    \"\"\"The regular expression used to validate resource paths for the policy\"\"\"\n\n    \"\"\"these are the internal lists of allowed and denied methods. These are lists\n    of objects and each object has 2 properties: A resource ARN and a nullable\n    conditions statement.\n    the build method processes these lists and generates the approriate\n    statements for the final policy\"\"\"\n    allowMethods = []\n    denyMethods = []\n\n    \n    restApiId = \"<<restApiId>>\"\n    \"\"\" Replace the placeholder value with a default API Gateway API id to be used in the policy. \n    Beware of using '*' since it will not simply mean any API Gateway API id, because stars will greedily expand over '/' or other separators. \n    See https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html for more details. \"\"\"    \n\n    region = \"<<region>>\"\n    \"\"\" Replace the placeholder value with a default region to be used in the policy. \n    Beware of using '*' since it will not simply mean any region, because stars will greedily expand over '/' or other separators. \n    See https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html for more details. \"\"\"    \n\n    stage = \"<<stage>>\"\n    \"\"\" Replace the placeholder value with a default stage to be used in the policy. \n    Beware of using '*' since it will not simply mean any stage, because stars will greedily expand over '/' or other separators. \n    See https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html for more details. \"\"\"\n\n    def __init__(self, principal, awsAccountId):\n        self.awsAccountId = awsAccountId\n        self.principalId = principal\n        self.allowMethods = []\n        self.denyMethods = []\n\n    def _addMethod(self, effect, verb, resource, conditions):\n        \"\"\"Adds a method to the internal lists of allowed or denied methods. Each object in\n        the internal list contains a resource ARN and a condition statement. The condition\n        statement can be null.\"\"\"\n        if verb != \"*\" and not hasattr(HttpVerb, verb):\n            raise NameError(\"Invalid HTTP verb \" + verb + \". Allowed verbs in HttpVerb class\")\n        resourcePattern = re.compile(self.pathRegex)\n        if not resourcePattern.match(resource):\n            raise NameError(\"Invalid resource path: \" + resource + \". Path should match \" + self.pathRegex)\n\n        if resource[:1] == \"/\":\n            resource = resource[1:]\n\n        resourceArn = (\"arn:aws:execute-api:\" +\n            self.region + \":\" +\n            self.awsAccountId + \":\" +\n            self.restApiId + \"/\" +\n            self.stage + \"/\" +\n            verb + \"/\" +\n            resource)\n\n        if effect.lower() == \"allow\":\n            self.allowMethods.append({\n                'resourceArn' : resourceArn,\n                'conditions' : conditions\n            })\n        elif effect.lower() == \"deny\":\n            self.denyMethods.append({\n                'resourceArn' : resourceArn,\n                'conditions' : conditions\n            })\n\n    def _getEmptyStatement(self, effect):\n        \"\"\"Returns an empty statement object prepopulated with the correct action and the\n        desired effect.\"\"\"\n        statement = {\n            'Action': 'execute-api:Invoke',\n            'Effect': effect[:1].upper() + effect[1:].lower(),\n            'Resource': []\n        }\n\n        return statement\n\n    def _getStatementForEffect(self, effect, methods):\n        \"\"\"This function loops over an array of objects containing a resourceArn and\n        conditions statement and generates the array of statements for the policy.\"\"\"\n        statements = []\n\n        if len(methods) > 0:\n            statement = self._getEmptyStatement(effect)\n\n            for curMethod in methods:\n                if curMethod['conditions'] is None or len(curMethod['conditions']) == 0:\n                    statement['Resource'].append(curMethod['resourceArn'])\n                else:\n                    conditionalStatement = self._getEmptyStatement(effect)\n                    conditionalStatement['Resource'].append(curMethod['resourceArn'])\n                    conditionalStatement['Condition'] = curMethod['conditions']\n                    statements.append(conditionalStatement)\n\n            statements.append(statement)\n\n        return statements\n\n    def allowAllMethods(self):\n        \"\"\"Adds a '*' allow to the policy to authorize access to all methods of an API\"\"\"\n        self._addMethod(\"Allow\", HttpVerb.ALL, \"*\", [])\n\n    def denyAllMethods(self):\n        \"\"\"Adds a '*' allow to the policy to deny access to all methods of an API\"\"\"\n        self._addMethod(\"Deny\", HttpVerb.ALL, \"*\", [])\n\n    def allowMethod(self, verb, resource):\n        \"\"\"Adds an API Gateway method (Http verb + Resource path) to the list of allowed\n        methods for the policy\"\"\"\n        self._addMethod(\"Allow\", verb, resource, [])\n\n    def denyMethod(self, verb, resource):\n        \"\"\"Adds an API Gateway method (Http verb + Resource path) to the list of denied\n        methods for the policy\"\"\"\n        self._addMethod(\"Deny\", verb, resource, [])\n\n    def allowMethodWithConditions(self, verb, resource, conditions):\n        \"\"\"Adds an API Gateway method (Http verb + Resource path) to the list of allowed\n        methods and includes a condition for the policy statement. More on AWS policy\n        conditions here: http://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#Condition\"\"\"\n        self._addMethod(\"Allow\", verb, resource, conditions)\n\n    def denyMethodWithConditions(self, verb, resource, conditions):\n        \"\"\"Adds an API Gateway method (Http verb + Resource path) to the list of denied\n        methods and includes a condition for the policy statement. More on AWS policy\n        conditions here: http://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#Condition\"\"\"\n        self._addMethod(\"Deny\", verb, resource, conditions)\n\n    def build(self):\n        \"\"\"Generates the policy document based on the internal lists of allowed and denied\n        conditions. This will generate a policy with two main statements for the effect:\n        one statement for Allow and one statement for Deny.\n        Methods that includes conditions will have their own statement in the policy.\"\"\"\n        if ((self.allowMethods is None or len(self.allowMethods) == 0) and\n            (self.denyMethods is None or len(self.denyMethods) == 0)):\n            raise NameError(\"No statements defined for the policy\")\n\n        policy = {\n            'principalId' : self.principalId,\n            'policyDocument' : {\n                'Version' : self.version,\n                'Statement' : []\n            }\n        }\n\n        policy['policyDocument']['Statement'].extend(self._getStatementForEffect(\"Allow\", self.allowMethods))\n        policy['policyDocument']['Statement'].extend(self._getStatementForEffect(\"Deny\", self.denyMethods))\n\n        return policy\n"
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt EntTranslateAuthorizerLambdaIAMRole.Arn
+      FunctionName: EntTranslateLambdaAuthorizer
+      Description: Enterprise Translate - Lambda request authorizer
+      Runtime: python3.9
+
+  # Permission to allow Lambda authorizer invocation from API Gateway
+
+  EntTranslateRequestAuthorizerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EntTranslateRequestAuthorizer
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EntTranslateApi}/authorizers/${EntTranslateApiGatewayAuthorizer}
+
+Outputs:
+  apiGatewayInvokeURL:
+    Value: !Sub https://${EntTranslateApi}.execute-api.${AWS::Region}.amazonaws.com/${apiGatewayStageName}
