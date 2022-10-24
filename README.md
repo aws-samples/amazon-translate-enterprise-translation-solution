@@ -8,11 +8,11 @@ The solution illustrates two options for translation: a standard translation and
 
 Three consumer types are defined as part of the solution deployment:
 
-<b>Standard translation persona</b> – Uses the standard translation option, allowing text translation, including automatic language detection
+<b>Standard translation persona</b> – Uses the standard translation option, allowing text translation, including automatic language detection.
 
-<b>Customized translation persona</b> – Uses the customized translation option, allowing all features of standard translation and also custom translations using a custom terminology file
+<b>Customized translation persona</b> – Uses the customized translation option, allowing all features of standard translation and also custom translations using a custom terminology file.
 
-<b>Admin persona</b> – Supports the customized translation option, allowing the upload of a custom terminology file, but isn’t able to make any other translation API calls
+<b>Admin persona</b> – Supports the customized translation option, allowing the upload of a custom terminology file, but isn’t able to make any other translation API calls.
 
 The following diagram illustrates the solution architecture.
 
@@ -55,7 +55,7 @@ Launch the provided CloudFormation template (<i>aws-enterprise-translate.yaml</i
 
 1/ Open CloudFormation page in console and select <b>Create stack with new resources</b>.
 
-2/ Provide the location of CloudFormation template from this repo (either stored locally or in your AWS S3 Bucket)
+2/ Provide the location of CloudFormation template from this repo (either stored locally or in your AWS S3 Bucket).
 
 3/ Choose <b>Next</b>.
 
@@ -157,7 +157,7 @@ To test the custom term upload functionality, we first create a PUT request in P
   <img src="Resources/ML-10275-image005.png" alt="Postman screen1" />
 </p>
 
-The API should run successfully with a message in the Body section of the response object saying “<i>Custom term uploaded successfully</i>”
+The API should run successfully with a message in the Body section of the response object saying “<i>Custom term uploaded successfully</i>”.
 
 - On the Amazon Translate console, choose <b>Custom Terminology</b> in the navigation pane.
 A custom terminology file should have been uploaded and is displayed in the terminology list. The file name syntax is the customer ID from the DynamoDB table for the selected API key followed by string <i>_customterm_1</i>.
