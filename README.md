@@ -53,6 +53,8 @@ The following diagram illustrates the solution architecture.
 
 Launch the provided CloudFormation template (<i>aws-enterprise-translate.yaml</i>) to deploy the solution in your AWS account. It can be deployed in any AWS region where Amazon Translate is supported.
 
+<i>Note that you are responsible for the cost of the AWS services used while running this sample deployment. Many of these services (such as Amazon Translate, API Gateway, and Lambda) come with a Free Tier to get you started. For full details, see the pricing pages for each AWS service that you use in this post.</i>
+
 1/ Open CloudFormation page in console and select <b>Create stack with new resources</b>.
 
 2/ Provide the location of CloudFormation template from this repo (either stored locally or in your AWS S3 Bucket).
