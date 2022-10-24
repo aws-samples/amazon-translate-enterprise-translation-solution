@@ -115,7 +115,7 @@ To test the standard translation API, you first create a POST request in Postman
 
 - Enter the standard API key value.
 
-- On the <b>Body<b/> tab, enter a JSON body as follows:
+- On the <b>Body</b> tab, enter a JSON body as follows:
 
 {
             "sourceText": "some text to translate",
