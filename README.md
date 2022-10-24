@@ -2,7 +2,7 @@
 
 This post provides an example of how to build a centralized customizable translation solution using Amazon Translate, Amazon API Gateway, AWS Lambda and Amazon DynamoDB. For details about the use-case, please refer to the [blog post](https://aws.amazon.com/blogs/machine-learning/a-foundational-use-case-for-customizing-amazon-translate/).
 
-The solution uses the native features of Amazon Translate, including real-time translation, automatic source language detection (powered by Amazon Comprehend), and custom translation using custom terminology. You can expose these features as one simple <i>/translate</i> API using API Gateway. In order for custom terminology to work, you also need to upload the terminology files to Amazon Translate. Therefore, the API <i>/customterm</i> is exposed to do that.
+The solution uses the native features of Amazon Translate, including real-time translation, automatic source language detection (powered by [Amazon Comprehend](https://aws.amazon.com/comprehend/)), and custom translation using [custom terminology](https://docs.aws.amazon.com/translate/latest/dg/how-custom-terminology.html). You can expose these features as one simple <i>/translate</i> API using API Gateway. In order for custom terminology to work, you also need to upload the terminology files to Amazon Translate. Therefore, the API <i>/customterm</i> is exposed to do that.
 
 The solution illustrates two options for translation: a standard translation and a customized translation (using the custom terminology feature). However, you can modify these options as needed to suit your business requirements. Consumers can use these options using [API keys](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-api-usage-plans.html) of API Gateway. When a translation request is received by the API, it validates (using an [AWS Lambda](http://aws.amazon.com/lambda) authorizer function) whether the provided API key is authorized to perform the type of translation requested. We use an [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) table to store metadata information about consumers, permissions, and API keys.
 
@@ -53,7 +53,7 @@ The following diagram illustrates the solution architecture.
 
 Launch the provided CloudFormation template (<i>aws-enterprise-translate.yaml</i>) to deploy the solution in your AWS account. It can be deployed in any AWS region where Amazon Translate is supported.
 
-1/ Open CloudFormation page in console and select <b>Create stack with new resources</b>
+1/ Open CloudFormation page in console and select <b>Create stack with new resources</b>.
 
 2/ Provide the location of CloudFormation template from this repo (either stored locally or in your AWS S3 Bucket)
 
@@ -61,11 +61,11 @@ Launch the provided CloudFormation template (<i>aws-enterprise-translate.yaml</i
 
 4/ For <b>Stack name</b>, enter the name of the CloudFormation stack (for this post, EnterpriseTranslate).
 
-5/ For <b>DDBTableName</b>¸ enter the name of the DynamoDB table (EnterpriseTranslateTable).
+5/ For <b>DDBTableName</b>¸ enter the name of the DynamoDB table (<i>EnterpriseTranslateTable</i>).
 
-6/ For <b>apiGatewayName</b>, enter the API Gateway created by the stack (EnterpriseTranslateAPI).
+6/ For <b>apiGatewayName</b>, enter the API Gateway created by the stack (<i>EnterpriseTranslateAPI</i>).
 
-7/ For <b>apiGatewayStageName</b>, enter the environment name for API Gateway (prod).
+7/ For <b>apiGatewayStageName</b>, enter the environment name for API Gateway (<i>prod</i>).
 
 8/ Choose <b>Next</b>.
 
@@ -75,11 +75,11 @@ Launch the provided CloudFormation template (<i>aws-enterprise-translate.yaml</i
 
 The deployment creates the following resources (all prefixed with <i>EntTranslate</i>):
 
-- An API Gateway API with two resources called <i>/customterm</i> and <i>/translate</i>, with three API keys to represent two translation personas and an admin persona
+- An API Gateway API with two resources called <i>/customterm</i> and <i>/translate</i>, with three API keys to represent two translation personas and an admin persona.
 
-- A DynamoDB table with three items to reflect one consumer with three different roles (three API keys)
+- A DynamoDB table with three items to reflect one consumer with three different roles (three API keys).
 
-- Several Lambda functions (using Python 3.9) as per the architecture diagram
+- Several Lambda functions (using Python 3.9) as per the architecture diagram.
 
 After the resources are deployed into your account on the AWS Cloud, you can test the solution.
 
@@ -91,11 +91,11 @@ Complete the following steps to collect the API keys:
 
 - Navigate to the <b>Outputs</b> tab of the CloudFormation stack and copy the value of the key <i>apiGatewayInvokeURL</i>.To find the API keys created by the solution, look in the DynamoDB table you just created or navigate to the API keys page on the API Gateway console. This post uses the latter approach.
 
-- On the <b>Resources</b> tab of the CloudFormation stack, find the logical ID <i>EntTranslateApi</i> and open the link under the <b>Physical ID</b> column in a new tab.
+- On the <b>Resources</b> tab of the CloudFormation stack, find the logical ID <i>EntTranslateApi</i> for API Gateway and open the link under the <b>Physical ID</b> column in a new tab.
 
 - On the API Gateway console, choose <b>API Keys</b> in the navigation pane.
 
-- Note the three API keys (standard, customized, admin) generated by the solution. For example, select EntTranslateCus1StandardTierKey and choose <b>Show link</b> against the API key property.
+- Note the three API keys (standard, customized, admin) generated by the solution. For example, select standard key <i>EntTranslateCus1StandardTierKey</i> and choose <b>Show link</b> against the API key property.
 
 Now you can test the APIs using any open-source tools of your choosing. For this post, we use the [Postman](https://www.postman.com/) API testing tool for illustration purposes only. For details on testing API with Postman, refer to [API development overview](https://learning.postman.com/docs/designing-and-developing-your-api/the-api-workflow/).
 
@@ -115,7 +115,7 @@ To test the standard translation API, you first create a POST request in Postman
 
 - Enter the standard API key value.
 
-- On the <b>Body</b> tab, enter a JSON body as follows:
+- On the <b>Body</b> tab, select <b>Raw</b> and enter a JSON body as follows:
 
 {
             "sourceText": "some text to translate",
@@ -137,30 +137,30 @@ The API should run successfully and return the translated text in the <b>Body</b
 
 To test the custom term upload functionality, we first create a PUT request in Postman.
 
-- Choose Add Request in Postman.
+- Choose <b>Add Request</b> in Postman.
 
-- Set the method type as PUT.
+- Set the method type as <b>PUT</b>.
 
 - Enter the API Gateway invoke URL.
 
-- Add /customterm to the end of the URL.
+- Add <i>/customterm</i> to the end of the URL.
 
-- On the Headers tab, add a new header key named x-api-key.
+- On the <b>Headers</b> tab, add a new header key named x-api-key.
 
-- Enter the admin API key value.
+- Enter the admin API key value (copied from API Gateway).
 
-- On the Body tab, change the format to binary and upload the custom term CSV file.A sample CSV file is provided under the /Resources folder.
+- On the Body tab, change the format to <b>binary</b> and upload the custom term CSV file.A sample CSV file is provided under the <i>/Resources</i> folder.
 
-- Call the API by choosing Send and verify the output.
+- Call the API by choosing <b>Send</b> and verify the output.
 
 <p align="center">
   <img src="Resources/ML-10275-image005.png" alt="Postman screen1" />
 </p>
 
-The API should run successfully with a message in the Body section of the response object saying “Custom term uploaded successfully”
+The API should run successfully with a message in the Body section of the response object saying “<i>Custom term uploaded successfully</i>”
 
-- On the Amazon Translate console, choose Custom Terminology in the navigation pane.
-A custom terminology file should have been uploaded and is displayed in the terminology list. The file name syntax is the customer ID from the DynamoDB table for the selected API key followed by string _customterm_1.
+- On the Amazon Translate console, choose <b>Custom Terminology</b> in the navigation pane.
+A custom terminology file should have been uploaded and is displayed in the terminology list. The file name syntax is the customer ID from the DynamoDB table for the selected API key followed by string <i>_customterm_1</i>.
 
 <p align="center">
   <img src="Resources/ML-10275-image007.png" alt="Postman screen1" />
@@ -168,15 +168,15 @@ A custom terminology file should have been uploaded and is displayed in the term
 
 Note that if you didn’t use the admin API key, the system will fail to upload the custom term file.Now you’re ready to perform your custom translation.
 
-- Choose Add Request in Postman.
+- Choose <b>Add Request</b> in Postman.
 
-- Set the method type as POST.
+- Set the method type as <b>POST</b>.
 
 - Enter the API Gateway invoke URL.
 
-- Add /translate to the URL endpoint.
+- Add <i>/translate</i> to the URL endpoint.
 
-- On the Headers tab, add a new header key named x-api-key.
+- On the <b>Headers</b> tab, add a new header key named <i>x-api-key</i>.
 
 - Enter the standard API key value.
 
@@ -188,11 +188,11 @@ Note that if you didn’t use the admin API key, the system will fail to upload 
             "sourceLanguage":"en"
 }
 
-- On the Params tab, add a new query string parameter named useCustomTerm with a value of 1.
+- On the <b>Params</b> tab, add a new query string parameter named <i>useCustomTerm</i> with a value of <b>1</b>.
 
-- Call the API by choosing Send and verify the output.The API should fail with the message “Unauthorized.” This is because you’re trying to call a customized translation feature using a standard persona API key.
+- Call the API by choosing <b>Send</b> and verify the output.The API should fail with the message “Unauthorized.” This is because you’re trying to call a customized translation feature using a standard persona API key.
 
-- On the Headers tab, enter the customized API key value.
+- On the <b>Headers</b> tab, enter the customized API key value (copied from API Gateway).
 
 - Run the test again, and it should be able to translate using the custom terminology file.
 
@@ -211,14 +211,6 @@ To avoid incurring future charges, clean up the resources you created as part of
 - Select the stack and choose <b>Delete</b> stack.
 
 Your stack might take some time to be deleted. You can track its progress on the Events tab. When the deletion is complete, the stack status changes from <i>DELETE_IN_PROGRESS</i> to <i>DELETE_COMPLETE</i>. It then disappears from the list.
-
-<h3>Conclusion</h3>
-
-In this post, we demonstrated how easy it is to perform real-time translation, upload custom terminology files, and do custom translation in Amazon Translate using its native APIs, and created a solution to support customization with API Gateway.
-
-You can extend the solution with customizations that are relevant to your business requirements. For instance, you can provide additional functionality like [Active Custom Translation](https://docs.aws.amazon.com/translate/latest/dg/customizing-translations-parallel-data.html) using parallel data via another API key, or create a caching layer to work with this solution to further reduce the cost of translations and serve frequently accessed translations from a cache. You can even introduce API throttling and rate limiting by taking advantage of API Gateway features. The possibilities are endless, and we would love to hear how you take this solution to the next level for your organization.
-
-For more information about Amazon Translate, visit [Amazon Translate resources](https://aws.amazon.com/translate/resources/?amazon-translate.sort-by=item.additionalFields.postDateTime&amazon-translate.sort-order=desc) to find video resources and blog posts, and also refer to [Amazon Translate FAQs](https://aws.amazon.com/translate/faqs/). If you’re new to Amazon Translate, try it out using the [Free Tier](https://aws.amazon.com/translate/pricing/), which offers 2 million characters per month for free for the first 12 months, starting from your first translation request.
 
 
 ## Security
